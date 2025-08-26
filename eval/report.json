@@ -1,0 +1,210 @@
+{
+  "timestamp": "2025-08-26 19:07:25",
+  "n": 25,
+  "hit@5": 0.84,
+  "hit@10": 0.92,
+  "mrr@5": 0.6933333333333334,
+  "mrr@10": 0.7017777777777777,
+  "details": [
+    {
+      "question": "What is the Most Great Peace?",
+      "expected": "world-order-bahaullah|peace",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 1.0,
+      "mrr@10": 1.0
+    },
+    {
+      "question": "What is the Lesser Peace?",
+      "expected": "peace",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 1.0,
+      "mrr@10": 1.0
+    },
+    {
+      "question": "What is the purpose of the Mashriqu\u2019l-Adhk\u00e1r?",
+      "expected": "institution-mashriqul-adhkar",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 1.0,
+      "mrr@10": 1.0
+    },
+    {
+      "question": "What is the importance of obligatory prayer?",
+      "expected": "importance-obligatory-prayer-fasting|kitab-i-aqdas",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 0.5,
+      "mrr@10": 0.5
+    },
+    {
+      "question": "What is the meaning of the Hidden Words?",
+      "expected": "hidden-words",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 0.5,
+      "mrr@10": 0.5
+    },
+    {
+      "question": "Explain the unity of mankind.",
+      "expected": "world-order-bahaullah|gleanings-writings-bahaullah|promulgation-universal-peace",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 1.0,
+      "mrr@10": 1.0
+    },
+    {
+      "question": "What is Huq\u00faqu\u2019ll\u00e1h?",
+      "expected": "huququllah-right-god|codification-law-huququllah",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 1.0,
+      "mrr@10": 1.0
+    },
+    {
+      "question": "What guidance on consultation?",
+      "expected": "consultation",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 0.5,
+      "mrr@10": 0.5
+    },
+    {
+      "question": "What is the Most Great Name?",
+      "expected": "gleanings-writings-bahaullah|prayers-meditations",
+      "hit@5": 0,
+      "hit@10": 1,
+      "mrr@5": 0.0,
+      "mrr@10": 0.1
+    },
+    {
+      "question": "How should Bah\u00e1\u2019\u00eds engage in social action?",
+      "expected": "social-action",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 0.5,
+      "mrr@10": 0.5
+    },
+    {
+      "question": "What is the covenant?",
+      "expected": "covenant",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 1.0,
+      "mrr@10": 1.0
+    },
+    {
+      "question": "What is the station of \u2018Abdu\u2019l-Bah\u00e1?",
+      "expected": "will-testament-abdul-baha|selections-writings-abdul-baha",
+      "hit@5": 0,
+      "hit@10": 0,
+      "mrr@5": 0.0,
+      "mrr@10": 0.0
+    },
+    {
+      "question": "What is the law of fasting?",
+      "expected": "kitab-i-aqdas|importance-obligatory-prayer-fasting",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 1.0,
+      "mrr@10": 1.0
+    },
+    {
+      "question": "Explain trustworthiness.",
+      "expected": "trustworthiness",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 1.0,
+      "mrr@10": 1.0
+    },
+    {
+      "question": "What is said about music?",
+      "expected": "music",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 1.0,
+      "mrr@10": 1.0
+    },
+    {
+      "question": "Role of Local Spiritual Assembly?",
+      "expected": "local-spiritual-assembly",
+      "hit@5": 0,
+      "hit@10": 0,
+      "mrr@5": 0.0,
+      "mrr@10": 0.0
+    },
+    {
+      "question": "Meaning of divine assistance?",
+      "expected": "power-divine-assistance",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 1.0,
+      "mrr@10": 1.0
+    },
+    {
+      "question": "Who wrote the Kit\u00e1b-i-\u00cdq\u00e1n?",
+      "expected": "kitab-i-iqan",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 0.5,
+      "mrr@10": 0.5
+    },
+    {
+      "question": "What is said about art?",
+      "expected": "importance-art",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 1.0,
+      "mrr@10": 1.0
+    },
+    {
+      "question": "Prayer for children?",
+      "expected": "bahai-prayers-tablets-children",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 0.3333333333333333,
+      "mrr@10": 0.3333333333333333
+    },
+    {
+      "question": "What is the purpose of the Mashriqu\u2019l-Adhk\u00e1r?",
+      "expected": "institution-mashriqul-adhkar",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 1.0,
+      "mrr@10": 1.0
+    },
+    {
+      "question": "On the Formative Age",
+      "expected": "significance-formative-age-our-faith|world-order-bahaullah",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 1.0,
+      "mrr@10": 1.0
+    },
+    {
+      "question": "Explain consultation in family life",
+      "expected": "family-life|consultation",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 0.5,
+      "mrr@10": 0.5
+    },
+    {
+      "question": "What is the Tablet of the Hague?",
+      "expected": "tablets-hague-abdul-baha",
+      "hit@5": 1,
+      "hit@10": 1,
+      "mrr@5": 1.0,
+      "mrr@10": 1.0
+    },
+    {
+      "question": "Who is the World Reformer?",
+      "expected": "world-order-bahaullah|gleanings-writings-bahaullah",
+      "hit@5": 0,
+      "hit@10": 1,
+      "mrr@5": 0.0,
+      "mrr@10": 0.1111111111111111
+    }
+  ]
+}

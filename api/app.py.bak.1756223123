@@ -1,0 +1,217 @@
+import os, glob, json
+from typing import List, Dict, Any
+from dotenv import load_dotenv
+from fastapi import FastAPI, Body
+from pydantic import BaseModel
+from openai import OpenAI
+from pymilvus import connections, Collection
+from fastapi.middleware.cors import CORSMiddleware
+
+
+app = FastAPI(title="Bahai Assistant API", version="0.1.0")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # in dev allow all
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+
+
+# Optional hybrid helpers (if your pymilvus exposes them)
+HAVE_SR=False
+try:
+    from pymilvus.search_requests import AnnSearchRequest, SparseSearchRequest, RRFRanker
+    HAVE_SR=True
+except Exception:
+    pass
+
+load_dotenv()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+PROMPT_ID = os.getenv("PROMPT_ID")
+ZILLIZ_URI = os.getenv("ZILLIZ_URI")
+ZILLIZ_TOKEN = os.getenv("ZILLIZ_TOKEN")
+assert OPENAI_API_KEY and PROMPT_ID and ZILLIZ_URI and ZILLIZ_TOKEN, "Missing required env vars"
+
+client = OpenAI()
+
+# Connect to Zilliz
+connections.connect(alias="default", uri=ZILLIZ_URI, token=ZILLIZ_TOKEN, timeout=30)
+COL = Collection("brl_chunks")
+COL.load()
+
+# Load parents into memory for expansion
+PARENTS: Dict[str, Dict[str, Any]] = {}
+for path in glob.glob("data/exports/*_parents.jsonl"):
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip(): continue
+            r = json.loads(line)
+            PARENTS[r["id"]] = r
+
+class SearchRequest(BaseModel):
+    query: str
+    k: int = 6
+    work_id: str | None = None  # optional partition filter
+
+class Passage(BaseModel):
+    id: str
+    parent_id: str | None = None
+    work_id: str
+    work_title: str | None = None
+    paragraph_id: str | None = None
+    text: str
+    source_url: str | None = None
+    score: float | None = None
+
+class SearchResponse(BaseModel):
+    results: List[Passage]
+    used_mode: str  # "hybrid_rrf" or "dense_only"
+
+def embed(text: str) -> List[float]:
+    return client.embeddings.create(model="text-embedding-3-large", input=[text]).data[0].embedding
+
+def _hits_to_passages(hits, limit=6):
+    out=[]
+    for i, hit in enumerate(hits[0][:limit], start=1):
+        out.append(Passage(
+            id=hit.id,
+            parent_id=hit.fields.get("parent_id"),
+            work_id=hit.fields.get("work_id"),
+            work_title=hit.fields.get("work_title"),
+            paragraph_id=hit.fields.get("paragraph_id"),
+            text=hit.fields.get("text") or "",
+            source_url=hit.fields.get("source_url"),
+            score=float(hit.distance) if hasattr(hit, "distance") else None,
+        ))
+    return out
+
+def dense_search(q: str, k: int, expr: str | None):
+    e = embed(q)
+    res = COL.search(
+        data=[e],
+        anns_field="text_dense",
+        param={"metric_type":"COSINE","params":{"nprobe":16}},
+        limit=k,
+        output_fields=["parent_id","work_id","work_title","paragraph_id","text","source_url"],
+        expr=expr
+    )
+    return _hits_to_passages(res, limit=k)
+
+def hybrid_rrf(q: str, k: int, expr: str | None):
+    # Only if helpers are available
+    e = embed(q)
+    dense_req = AnnSearchRequest([e], "text_dense", {"metric_type":"COSINE","params":{"nprobe":16}}, limit=max(k*3, 20), expr=expr)
+    bm25_req = SparseSearchRequest("text", q, params={"type":"bm25","limit":max(k*3, 20)}, expr=expr)
+    fused = COL.hybrid_search(
+        reqs=[dense_req, bm25_req],
+        rerank=RRFRanker(),
+        limit=k,
+        output_fields=["parent_id","work_id","work_title","paragraph_id","text","source_url"]
+    )
+    return _hits_to_passages(fused, limit=k)
+
+def build_expr(work_id: str | None):
+    if not work_id:
+        return None
+    # Partition key is work_id; expr still allowed for filtering
+    return f'work_id == "{work_id}"'
+
+@app.post("/search", response_model=SearchResponse)
+def search(req: SearchRequest):
+    expr = build_expr(req.work_id)
+    if HAVE_SR:
+        try:
+            results = hybrid_rrf(req.query, req.k, expr)
+            return SearchResponse(results=results, used_mode="hybrid_rrf")
+        except Exception as e:
+            # Fallback to dense-only if hybrid fails
+            results = dense_search(req.query, req.k, expr)
+            return SearchResponse(results=results, used_mode="dense_only")
+    else:
+        results = dense_search(req.query, req.k, expr)
+        return SearchResponse(results=results, used_mode="dense_only")
+
+class AnswerRequest(BaseModel):
+    query: str
+    k: int = 6
+    work_id: str | None = None
+
+class Citation(BaseModel):
+    work_title: str
+    paragraph_id: str | None
+    source_url: str
+    work_id: str
+
+class AnswerResponse(BaseModel):
+    answer: str
+    citations: List[Citation]
+    context_preview: List[str]
+    used_mode: str
+
+DISCLAIMER = (
+    "This assistant retrieves and cites passages from the Bahá’í writings. "
+    "It does not issue rulings or speak with authority. See bahai.org/legal."
+)
+
+@app.post("/answer", response_model=AnswerResponse)
+def answer(req: AnswerRequest):
+    s = search(SearchRequest(query=req.query, k=req.k, work_id=req.work_id))
+    # Expand parents for broader context
+    parent_texts=[]
+    for p in s.results:
+        if p.parent_id and p.parent_id in PARENTS:
+            parent_texts.append(PARENTS[p.parent_id]["text"])
+        else:
+            parent_texts.append(p.text)
+
+
+    # --- Build a minimal structured prompt via Prompt API (PROMPT_ID) ---
+    prompt_vars = {
+        "user_query": req.query,
+        "disclaimer": DISCLAIMER,
+        "passages": [
+            {"text": p.text, "work_title": p.work_title, "paragraph_id": p.paragraph_id,
+             "source_url": p.source_url, "work_id": p.work_id}
+            for p in s.results
+        ],
+        "parent_context": parent_texts[:req.k]
+    }
+
+    answer_text = None
+    try:
+        resp = client.responses.create(
+            model="gpt-4o",
+            prompt_id=PROMPT_ID,
+            input=prompt_vars
+        )
+        answer_text = resp.output_text
+    except Exception as e:
+        # Fallback: compose a minimal quoted answer with citations
+        lines = [f"{DISCLAIMER}\n"]
+        lines.append(f"**Query:** {req.query}\n")
+        if not s.results:
+            lines.append("No strong matches were found. Please try rephrasing your question.")
+        else:
+            lines.append("**Quoted passages:**")
+            for p in s.results[:req.k]:
+                q = p.text.strip().replace("\n", " ")
+                if len(q)>400: q = q[:400] + "…"
+                cite = f" — *{p.work_title}*, ¶{p.paragraph_id}" if p.paragraph_id else f" — *{p.work_title}*"
+                link = f" ({p.source_url})" if p.source_url else ""
+                lines.append(f"“{q}”{cite}{link}")
+        lines.append("\n_(OpenAI prompt error; returned fallback)_")
+        answer_text = "\n".join(lines)
+        return AnswerResponse(
+        answer=answer_text,
+        citations=citations,
+        context_preview=context_snippets,
+        used_mode=s.used_mode
+    )
+
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}

@@ -1,0 +1,18 @@
+{
+  "author": "Compilations",
+  "work_title": "Music",
+  "work_id": "music",
+  "downloads_page_url": "https://www.bahai.org/library/authoritative-texts/compilations/music/",
+  "html_url": "https://www.bahai.org/library/authoritative-texts/compilations/music/music.xhtml",
+  "pdf_url": null,
+  "docx_url": null,
+  "license_terms_url": "https://www.bahai.org/legal",
+  "about_page_url": "https://www.bahai.org/library/authoritative-texts/compilations/music/",
+  "hashes": {
+    "html": "d46b9c969a9cc687a441f1f5f3954dc4b3764b60155182e5b889b2b032fac990",
+    "pdf": null,
+    "docx": null
+  },
+  "normalized_path": "/home/nezar/bahai-assistant/data/normalized/music.html",
+  "normalized_hash": "9f87ca2e6c0601a26e1c674981ede1fc155a66d4ddd7c28f5de9e449ff0d6fc0"
+}

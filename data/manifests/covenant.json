@@ -1,0 +1,18 @@
+{
+  "author": "Compilations",
+  "work_title": "Covenant",
+  "work_id": "covenant",
+  "downloads_page_url": "https://www.bahai.org/library/authoritative-texts/compilations/covenant/",
+  "html_url": "https://www.bahai.org/library/authoritative-texts/compilations/covenant/covenant.xhtml",
+  "pdf_url": null,
+  "docx_url": null,
+  "license_terms_url": "https://www.bahai.org/legal",
+  "about_page_url": "https://www.bahai.org/library/authoritative-texts/compilations/covenant/",
+  "hashes": {
+    "html": "9e57c9effcb5a719beb59a166c00df98a82ecc9cdde17a23f79ebf5fcdbb5597",
+    "pdf": null,
+    "docx": null
+  },
+  "normalized_path": "/home/nezar/bahai-assistant/data/normalized/covenant.html",
+  "normalized_hash": "61a151d643499a0a8a6c32d4e22b1709d7800f85d22a6f1dfd4d23a557cd82ac"
+}

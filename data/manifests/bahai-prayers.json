@@ -1,0 +1,18 @@
+{
+  "author": "Various",
+  "work_title": "Bahai Prayers",
+  "work_id": "bahai-prayers",
+  "downloads_page_url": "https://www.bahai.org/library/authoritative-texts/prayers/bahai-prayers/",
+  "html_url": "https://www.bahai.org/library/authoritative-texts/prayers/bahai-prayers/bahai-prayers.xhtml",
+  "pdf_url": null,
+  "docx_url": null,
+  "license_terms_url": "https://www.bahai.org/legal",
+  "about_page_url": "https://www.bahai.org/library/authoritative-texts/prayers/bahai-prayers/",
+  "hashes": {
+    "html": "1395b16ebb2c84ac2a811deb047206aa40a2168f36947c29a04197f76ced555d",
+    "pdf": null,
+    "docx": null
+  },
+  "normalized_path": "/home/nezar/bahai-assistant/data/normalized/bahai-prayers.html",
+  "normalized_hash": "55c3dd17f504c7db69b3fbabb70b285d75f23ee625e09708634128e593fbcad2"
+}
