@@ -9,21 +9,10 @@ from openai import OpenAI
 from pymilvus import connections, Collection
 from fastapi.middleware.cors import CORSMiddleware
 
-
 app = FastAPI(title="Bahai Assistant API", version="0.1.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # in dev allow all
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-
-
-
-# Optional hybrid helpers (if your pymilvus exposes them)
+# Optional hybrid helpers (if pymilvus has them)
 HAVE_SR=False
 try:
     from pymilvus.search_requests import AnnSearchRequest, SparseSearchRequest, RRFRanker
@@ -57,7 +46,7 @@ for path in glob.glob("data/exports/*_parents.jsonl"):
 class SearchRequest(BaseModel):
     query: str
     k: int = 6
-    work_id: str | None = None  # optional partition filter
+    work_id: str | None = None
 
 class Passage(BaseModel):
     id: str
@@ -71,7 +60,7 @@ class Passage(BaseModel):
 
 class SearchResponse(BaseModel):
     results: List[Passage]
-    used_mode: str  # "hybrid_rrf" or "dense_only"
+    used_mode: str
 
 def embed(text: str) -> List[float]:
     return client.embeddings.create(model="text-embedding-3-large", input=[text]).data[0].embedding
@@ -104,7 +93,6 @@ def dense_search(q: str, k: int, expr: str | None):
     return _hits_to_passages(res, limit=max(120, k))
 
 def hybrid_rrf(q: str, k: int, expr: str | None):
-    # Only if helpers are available
     e = embed(q)
     dense_req = AnnSearchRequest([e], "text_dense", {"metric_type":"COSINE","params":{"nprobe":16}}, limit=max(k*3, 20), expr=expr)
     bm25_req = SparseSearchRequest("text", q, params={"type":"bm25","limit":max(k*3, 20)}, expr=expr)
@@ -119,7 +107,6 @@ def hybrid_rrf(q: str, k: int, expr: str | None):
 def build_expr(work_id: str | None):
     if not work_id:
         return None
-    # Partition key is work_id; expr still allowed for filtering
     return f'work_id == "{work_id}"'
 
 @app.post("/search", response_model=SearchResponse)
@@ -129,8 +116,7 @@ def search(req: SearchRequest):
         try:
             results = hybrid_rrf(req.query, req.k, expr)
             return SearchResponse(results=results, used_mode="hybrid_rrf")
-        except Exception as e:
-            # Fallback to dense-only if hybrid fails
+        except Exception:
             results = dense_search(req.query, req.k, expr)
             return SearchResponse(results=results, used_mode="dense_only")
     else:
@@ -159,14 +145,87 @@ DISCLAIMER = (
     "It does not issue rulings or speak with authority. See bahai.org/legal."
 )
 
+# Inline fallback system instructions
+SYSTEM_INSTRUCTIONS = """
+---  # 📖 Bahá’í Study Assistant – System Instructions
 
+You are an **AI-powered study assistant** designed to help users explore the Bahá’í writings warmly and supportively. Your purpose is to provide **referenced source texts**, approachable explanations, and resource guidance.  
+
+⚠️ You are **not an official Bahá’í authority, clergy, or representative**. Always make this clear to users. Present yourself as a **friendly companion for learning**.
+
+---  
+
+## 🔹 Core Guidelines
+
+* **Identity:**
+   * Introduce yourself as a *study assistant*.
+   * Clarify you do not represent Bahá’í institutions.
+   * Encourage users to continue their own investigation.
+* **Referencing:**
+   * Always provide direct **quotes from the Bahá’í writings** (or related resources).
+   * Always include **source details**: book title, author, and page/section if available—but do not mention file types (such as PDF, TXT, etc) in your citations.
+   * If metadata is incomplete in retrieved text chunks, give what is available and note this transparently.
+   * **If a user asks for longer passages, extended selections, tablets, or full prayers (such as for a multiple-reading program or devotional), you must check for, and provide, the entire text, confirming that the portion you deliver is complete. If a passage continues in additional retrieved text chunks, you should gather and combine them to present the full, contiguous quotation or prayer as requested, with proper referencing.**
+* **Explanations:**
+   * After citing, give a **friendly, clear summary** of what the text means in simple language.
+   * Note when explanations are interpretive and encourage the user to consult the full text.
+   * Avoid dogmatic statements, personal interpretations, or definitive judgments.
+* **Tone:**
+   * Neutral, respectful, and approachable.
+   * Encourage open-minded inquiry and warmth.
+   * Never dismiss questions—if insufficient material exists, acknowledge limits and suggest further study.
+* **Scope Handling:**
+   * If multiple sources are relevant, present several key references prioritizing clarity and directness.
+   * If sources differ in emphasis, gently note this and encourage users to consider the broader context.
+   * If no references are found, state this kindly and suggest alternative exploration paths.
+   * You should **only answer questions or discuss topics specifically relating to the Bahá’í Faith**. If asked about unrelated areas (such as math, science, coding, weather, etc.), politely decline to answer unless they directly connect to Bahá’í teachings or context.
+
+---
+
+## 🔹 Response Structure
+
+For **every user question**, format your response as follows:
+
+1. **Referenced Source(s):**
+   * Quote(s) directly from the Bahá’í writings or other provided references.
+   * Give full bibliographic details in this format:
+     > *“The earth is but one country, and mankind its citizens.”*
+     > — Bahá’u’lláh, *Gleanings from the Writings of Bahá’u’lláh*, p. 250
+   * **If the user requests longer selections, a program, or asks for a full tablet, prayer, or passage (e.g., for devotionals or study), you must provide the entire text as completely as possible by gathering and combining any contiguous, relevant chunks, with proper citation. Always verify that the passage is complete.**
+
+2. **Explanation:**
+   * A plain-language, friendly explanation of the passage(s) in as much detail as needed for clarity.
+   * Note when explanation is based on general understanding rather than explicit text.
+   * Encourage the user to read the source in context for their own understanding.
+
+3. **Disclaimer:**
+   * Always include:
+     > *I am an AI study assistant, not a representative of official Bahá’í institutions or clergy. Please view my responses as supportive guidance and continue your own exploration of the texts.*
+
+---
+
+## 🔹 Special Capability: Devotional/Program Planning
+
+* Upon request, you can help **plan devotionals or study programs (e.g. Jy, Ruhi)** focused on a particular theme.
+* **Programs should be detailed and, where appropriate, provide extended, full texts of prayers, tablets, or passages (not only excerpts), ensuring each text is complete by checking and assembling all associated text chunks.**
+* Compile a list of prayers, suitable quotations, and brief related stories from Bahá’í history or texts.
+* Arrange the content to suit the theme or specific needs stated by the user (e.g., children's class, youth, or community gathering).
+* When assembling, ensure all sources are referenced and the selections are relevant to the requested theme.
+* **If the user requests a longer or more comprehensive program, include extended passages, grouped texts, or longer paragraphs as appropriate to fulfill their request, verifying completeness as above.**
+
+---
+
+## 🔹 Final Notes
+
+* **No strict length limit**—respond freely and use as much detail as is helpful, balancing referencing, explanation, and supportive guidance.
+* Stay within the subject area of the Bahá’í Faith.
+* Your ultimate role: **help users discover and reflect** on the Bahá’í writings, not to provide final answers.
+"""
 
 @app.post("/answer", response_model=AnswerResponse)
 def answer(req: AnswerRequest):
-    # 1) Run retrieval (uses hybrid if available, else dense)
     sresp = search(SearchRequest(query=req.query, k=req.k, work_id=req.work_id))
 
-    # 2) Expand to parent context where available
     parent_texts = []
     for psg in sresp.results:
         if psg.parent_id and psg.parent_id in PARENTS:
@@ -174,22 +233,18 @@ def answer(req: AnswerRequest):
         else:
             parent_texts.append(psg.text)
 
-    # 3) Build citations + context preview
     citations = []
     context_snippets = []
     for psg in sresp.results:
         context_snippets.append(psg.text)
         if psg.source_url and psg.work_title:
-            citations.append(
-                Citation(
-                    work_title=psg.work_title,
-                    paragraph_id=psg.paragraph_id,
-                    source_url=psg.source_url,
-                    work_id=psg.work_id,
-                )
-            )
+            citations.append(Citation(
+                work_title=psg.work_title,
+                paragraph_id=psg.paragraph_id,
+                source_url=psg.source_url,
+                work_id=psg.work_id,
+            ))
 
-    # 4) Prepare model inputs
     prompt_vars = {
         "user_query": req.query,
         "disclaimer": DISCLAIMER,
@@ -206,49 +261,44 @@ def answer(req: AnswerRequest):
         "parent_context": parent_texts[: req.k],
     }
 
-    answer_text = None
-
-    # 5) Try using PROMPT_ID if the SDK supports it; otherwise fall back to an inline prompt
     try:
-        # Some SDK builds don't accept prompt_id; so wrap in TypeError catcher
-        resp = client.responses.create(model="gpt-4o", prompt_id=PROMPT_ID, input=prompt_vars)  # type: ignore
+        # Try PROMPT_ID path
+        resp = client.responses.create(
+            model="gpt-4.1",
+            temperature=0.15,
+            max_output_tokens=32000,
+            prompt_id=PROMPT_ID,
+            input=prompt_vars
+        )
         answer_text = resp.output_text
     except TypeError:
-        # Inline system prompt fallback (portable)
-        SYSTEM = (
-            "You are a retrieval assistant. Use ONLY the provided passages. "
-            "Answer the user concisely with VERBATIM quotes inside quotation marks. "
-            "After the answer, include a compact list of citations with work title, paragraph/section id if present, and deep link. "
-            "If evidence is weak, say so and present the closest passages without overstating. "
-            "Never paraphrase inside quotes; keep diacritics intact."
-        )
+        # Inline fallback
         USER = (
-            "User Query: {q}\n\n"
-            "Passages (children):\n{passages}\n\n"
-            "Parent context (for background; do not quote unless it matches the child exactly):\n{parents}\n\n"
-            "Produce a short answer with verbatim quotes and a citation list."
-        ).format(
-            q=req.query,
-            passages="\n\n".join(
-                f"- [{i+1}] {d['work_title']} ¶{d.get('paragraph_id') or ''} {d['source_url']}\n{d['text']}"
-                for i, d in enumerate(prompt_vars["passages"])
-            ),
-            parents="\n\n---\n\n".join(parent_texts[: req.k]),
+            f"User Query: {req.query}\n\n"
+            "Passages:\n" +
+            "\n\n".join(
+                f"- {d['work_title']} ¶{d.get('paragraph_id') or ''} {d['source_url']}\n{d['text']}"
+                for d in prompt_vars["passages"]
+            ) +
+            "\n\nParent Context (for background only):\n" +
+            "\n\n---\n\n".join(parent_texts[: req.k])
         )
 
         resp = client.responses.create(
-            model="gpt-4o",
+            model="gpt-4.1",
+            temperature=0.15,
+            max_output_tokens=32000,
             input=[
-                {"role": "system", "content": SYSTEM},
+                {"role": "system", "content": SYSTEM_INSTRUCTIONS},
                 {"role": "user", "content": USER},
             ],
         )
         answer_text = resp.output_text
-    except Exception as e:
-        # 6) Last-resort fallback: deterministic quoted snippets to keep JSON contract
+    except Exception:
+        # Last resort fallback
         lines = [f"{DISCLAIMER}\n", f"**Query:** {req.query}\n"]
         if not sresp.results:
-            lines.append("No strong matches were found. Please try rephrasing your question.")
+            lines.append("No strong matches were found.")
         else:
             lines.append("**Quoted passages:**")
             for psg in sresp.results[: req.k]:
@@ -257,7 +307,6 @@ def answer(req: AnswerRequest):
                 cite = f" — *{psg.work_title}*" + (f", ¶{psg.paragraph_id}" if psg.paragraph_id else "")
                 link = f" ({psg.source_url})" if psg.source_url else ""
                 lines.append(f"“{q}”{cite}{link}")
-            lines.append("\n_(OpenAI error; returned fallback)_")
         answer_text = "\n".join(lines)
 
     return AnswerResponse(

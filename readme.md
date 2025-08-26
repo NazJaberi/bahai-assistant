@@ -1,276 +1,336 @@
-# Bahá’í Assistant Backend
+# 1. Full Project `README.md`
 
-This project ingests authoritative Bahá’í texts from [bahai.org](https://www.bahai.org/library/authoritative-texts/), chunks and embeds them, stores them in Milvus/Zilliz Cloud, and exposes a FastAPI-based retrieval/QA API.
+```markdown
+# Bahá’í Assistant – Retrieval-Augmented Generation (RAG) API
 
-The pipeline ensures every answer is **grounded in the texts**, with **verbatim quotes** and **clickable citations**.
-
----
-
-## Table of Contents
-
-* [Overview](#overview)
-* [Architecture](#architecture)
-* [Setup Phases](#setup-phases)
-
-  * [Phase 0: Environment & Prereqs](#phase-0-environment--prereqs)
-  * [Phase 1: Cloudflare R2 Storage](#phase-1-cloudflare-r2-storage)
-  * [Phase 2: Data Layout](#phase-2-data-layout)
-  * [Phase 3: Collect Text Sources](#phase-3-collect-text-sources)
-  * [Phase 4: Export & Children Files](#phase-4-export--children-files)
-  * [Phase 5: Chunking](#phase-5-chunking)
-  * [Phase 6: Embedding & Upload](#phase-6-embedding--upload)
-  * [Phase 7: API Build](#phase-7-api-build)
-  * [Phase 8: API Polish](#phase-8-api-polish)
-  * [Phase 9: Evaluation Loop](#phase-9-evaluation-loop)
-* [Next Steps](#next-steps)
-* [License](#license)
+This repository implements a study assistant that retrieves from the Bahá’í Writings (stored in a Milvus/Zilliz vector DB) and generates grounded, cited answers using OpenAI’s `gpt-4.1`.
 
 ---
 
-## Overview
+## 🚀 Project Overview
 
-**Goal**: Build a private retrieval + QA assistant over the Bahá’í Writings.
-
-* **Sources**: Official XHTML texts from bahai.org.
-* **Storage**: Cloudflare R2 (S3-compatible).
-* **Vector DB**: Zilliz Cloud (Milvus).
-* **Embeddings**: OpenAI `text-embedding-3-large`.
-* **API**: FastAPI, with `/search` (retrieve passages) and `/answer` (compose answers with citations).
-* **Eval**: Golden set with hit\@k / MRR\@k metrics.
+- **Backend:** FastAPI app exposing `/search` and `/answer` endpoints.
+- **Vector DB:** Milvus/Zilliz Cloud storing chunked texts of the Bahá’í writings.
+- **Embedding model:** `text-embedding-3-large` (1536-d).
+- **Generation model:** `gpt-4.1` with low temperature and long context window (32k tokens).
+- **Evaluation:** Golden set of queries + retrieval metrics.
+- **Deployment:** Cloudflare Tunnel (ephemeral or named) for secure public API access.
 
 ---
 
-## Architecture
+## 📂 Project Structure
 
 ```
-bahai.org (XHTML) --> data/originals/
-                     |
-                     v
-              normalization & parsing
-                     |
-                     v
-         data/exports/*_children.jsonl
-                     |
-                     v
-          Embeddings via OpenAI API
-                     |
-                     v
-              Milvus/Zilliz Cloud
-                     |
-                     v
-          FastAPI --> /search, /answer
-```
 
-* **Cloudflare R2** holds all pipeline artifacts (`originals/`, `normalized/`, `manifests/`, `exports/`, `logs/`, `eval/`).
-* **Zilliz Cloud** stores the embedded chunks (`brl_chunks` collection).
-* **FastAPI** exposes endpoints with citations.
+api/
+app.py              # FastAPI app (main API logic)
+fusion\_generic.py   # reranking / fusion helpers
+synthesis\_rules.py  # system prompt helpers (optional)
+data/
+exports/            # JSONL exports (parents + children chunks)
+scripts/
+embed.py            # bulk embedding into Zilliz
+test\_search.py      # test queries
+test\_dense\_only.py  # dense-only search
+eval\_retrieval.py   # retrieval evaluation loop
+remove\_work.py      # delete a work from Milvus
+embed\_one.py        # re-ingest a single work\_id
+run\_api.sh          # run API via uvicorn
+eval/
+golden\_set.csv      # golden evaluation set
+
+````
 
 ---
 
-## Setup Phases
-
-### Phase 0: Environment & Prereqs
-
-* Ubuntu 22.04 (WSL or server).
-* Python 3.12 with venv:
-
-  ```bash
-  python3 -m venv .venv
-  source .venv/bin/activate
-  pip install -r requirements.txt
-  ```
-* Tools:
-
-  ```bash
-  sudo apt-get update && sudo apt-get install -y rclone jq
-  ```
-
----
-
-### Phase 1: Cloudflare R2 Storage
-
-* Created R2 bucket: **`bahai-texts`**.
-* Configured `rclone` with:
-
-  ```bash
-  rclone config
-  # remote name: r2
-  # type: s3
-  # provider: Cloudflare
-  # access key + secret key (admin token)
-  # endpoint: https://<account_id>.r2.cloudflarestorage.com
-  ```
-
-Tested:
+## ⚙️ Setup
 
 ```bash
-rclone lsf r2:bahai-texts/
+# clone + enter
+git clone <repo-url>
+cd bahai-assistant
+
+# create venv
+python3 -m venv .venv
+source .venv/bin/activate
+
+# install dependencies
+pip install -r requirements.txt
+````
+
+### Required Environment Variables
+
+Create `.env`:
+
+```env
+OPENAI_API_KEY=sk-...
+PROMPT_ID=bahai_assistant_prompt   # or any saved prompt in OpenAI
+ZILLIZ_URI=...
+ZILLIZ_TOKEN=...
+R2_BUCKET=bahai-texts
 ```
 
 ---
 
-### Phase 2: Data Layout
-
-Created prefixes:
-
-```
-originals/
-normalized/
-manifests/
-exports/
-logs/
-```
-
-Verified with:
+## 🔎 Ingest Data into Zilliz
 
 ```bash
-rclone lsf "r2:bahai-texts/" --dirs-only
+# Embed all children JSONL into Milvus/Zilliz
+python3 scripts/embed.py
 ```
 
 ---
 
-### Phase 3: Collect Text Sources
+## 🧪 Testing Retrieval
 
-* Used **only XHTML links** from [bahai.org](https://www.bahai.org).
-* Collected \~70 works across Bahá’u’lláh, the Báb, ‘Abdu’l-Bahá, Shoghi Effendi, UHJ, Compilations, Prayers.
-* Stored URLs in a manifest for ingestion.
+```bash
+# Dense only test
+python3 scripts/test_dense_only.py
 
----
-
-### Phase 4: Export & Children Files
-
-* Scraped XHTML → JSONL exports in `data/exports/`.
-
-* Each `_children.jsonl` has chunk-level records:
-
-  ```json
-  {
-    "id": "world-order-bahaullah-c00176",
-    "parent_id": "world-order-bahaullah-p0123",
-    "work_id": "world-order-bahaullah",
-    "author": "Shoghi Effendi",
-    "work_title": "World Order Bahaullah",
-    "paragraph_id": "p0123",
-    "text": "The Most Great Peace ...",
-    "source_url": "https://www.bahai.org/.../xhtml",
-    "lang": "en",
-    "hash": "sha256..."
-  }
-  ```
-
-* Validated with:
-
-  ```bash
-  head -n 3 data/exports/*_children.jsonl
-  ```
-
----
-
-### Phase 5: Chunking
-
-* Ran `scripts/chunk_brl.py`.
-* Produced \~10–700 children per work depending on length.
-* Fixed missing `parent_id` issues.
-
----
-
-### Phase 6: Embedding & Upload
-
-* Embedded all children with OpenAI `text-embedding-3-large`.
-* Inserted into Milvus/Zilliz `brl_chunks` collection.
-* Verified with test search:
-
-  ```bash
-  python3 scripts/test_dense_only.py
-  ```
-
-Output example:
-
-```
-=== Dense (COSINE) ===
-1. id=world-order-bahaullah-c00176 score=0.6729
-   work_id   : world-order-bahaullah
-   text      : "The Most Great Peace ..."
+# Hybrid test (if SparseSearchRequest available)
+python3 scripts/test_search.py
 ```
 
 ---
 
-### Phase 7: API Build
+## 📊 Evaluation (Phase 9)
 
-* `api/app.py` (FastAPI).
-* Endpoints:
+Golden set defined in `eval/golden_set.csv`.
+Run evaluation:
 
-  * `/healthz` → `{ "ok": true }`
-  * `/search` → top passages (chunks).
-  * `/answer` → LLM answer with quotes + citations.
-* Start with:
+```bash
+python3 scripts/eval_retrieval.py | tee eval/last_run.txt
+```
 
-  ```bash
-  ./scripts/run_api.sh
-  ```
-* Swagger docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
+Sync to Cloudflare R2:
 
----
+```bash
+rclone copy eval "r2:${R2_BUCKET}/eval" --create-empty-src-dirs
+```
 
-### Phase 8: API Polish
-
-* Added CORS middleware.
-* Wrapper script `scripts/run_api.sh` loads `.env` and starts uvicorn.
-* Curl tests:
-
-  ```bash
-  curl -s http://127.0.0.1:8000/healthz
-  curl -s -X POST http://127.0.0.1:8000/search -d '{"query":"Most Great Peace"}'
-  curl -s -X POST http://127.0.0.1:8000/answer -d '{"query":"Most Great Peace"}'
-  ```
+Produces `eval/report.json` with hit\@k and MRR metrics.
 
 ---
 
-### Phase 9: Evaluation Loop
+## 🛡️ Safety & Provenance (Phase 10)
 
-* Golden set: `eval/golden_set.csv` (\~25 Qs with expected work\_ids).
-* Eval script: `scripts/eval_retrieval.py`.
-* Run:
+* Each record carries `source_url` and license reference (`bahai.org/legal`).
+* Removal of a work:
 
-  ```bash
-  python3 scripts/eval_retrieval.py | tee eval/last_run.txt
-  rclone copy eval "r2:bahai-texts/eval" --create-empty-src-dirs
-  ```
+```bash
+python3 scripts/remove_work.py peace
+```
 
-Example metrics:
+* Re-ingest after cleanup:
+
+```bash
+python3 scripts/embed_one.py peace
+```
+
+---
+
+## 🌐 Deploy via Cloudflare Tunnel
+
+### Ephemeral (quick demo)
+
+```bash
+sudo apt-get update && sudo apt-get install -y cloudflared
+cloudflared tunnel --url http://127.0.0.1:8000
+```
+
+### Named Tunnel (stable domain)
+
+```bash
+cloudflared tunnel login
+cloudflared tunnel create bahai-assistant
+
+# config
+mkdir -p ~/.cloudflared
+nano ~/.cloudflared/config.yml
+# paste:
+tunnel: bahai-assistant
+credentials-file: /home/$USER/.cloudflared/xxxx.json
+ingress:
+  - hostname: api.yourdomain.com
+    service: http://localhost:8000
+  - service: http_status:404
+
+# DNS route
+cloudflared tunnel route dns bahai-assistant api.yourdomain.com
+
+# run as service
+sudo cloudflared service install
+sudo systemctl restart cloudflared
+```
+
+Now open `https://api.yourdomain.com/docs`.
+
+---
+
+## 📖 System Instructions
+
+The assistant is a **study companion**, not an authority.
+It always:
+
+* Provides verbatim quotes.
+* Gives citations (title, section, link).
+* Summarizes in plain language.
+* Acknowledges its limits.
+* Ends with a disclaimer:
+
+  > *I am an AI study assistant, not a representative of official Bahá’í institutions or clergy. Please continue your own exploration of the texts.*
+
+---
+
+## ✅ Post-Deployment Checklist
+
+* API starts on boot (`tmux`, `screen`, or systemd unit).
+* Cloudflare tunnel service active.
+* Evaluation metrics synced to R2.
+* Logs optionally rotated or synced.
+
+````
+
+---
+
+# 2. API Reference `README_API.md`
+
+```markdown
+# Bahá’í Assistant API Reference
+
+This document describes how to call the API endpoints for the Bahá’í Assistant.
+
+---
+
+## 🔍 Endpoints
+
+### 1. Health Check
+**GET** `/healthz`
+
+**Response:**
+```json
+{ "ok": true }
+````
+
+---
+
+### 2. Search
+
+**POST** `/search`
+
+**Request Body:**
 
 ```json
 {
-  "n": 25,
-  "hit@5": 0.84,
-  "hit@10": 0.92,
-  "mrr@5": 0.693,
-  "mrr@10": 0.702
+  "query": "What is the Most Great Peace?",
+  "k": 5
+}
+```
+
+**Optional Fields:**
+
+* `work_id`: limit results to one work.
+
+**Response:**
+
+```json
+{
+  "results": [
+    {
+      "id": "peace-c00054",
+      "parent_id": null,
+      "work_id": "peace",
+      "work_title": "Peace",
+      "paragraph_id": "",
+      "text": "The Most Great Peace...",
+      "source_url": "https://www.bahai.org/library/...",
+      "score": 0.64
+    }
+  ],
+  "used_mode": "dense_only"
 }
 ```
 
 ---
 
-## Next Steps
+### 3. Answer
 
-* **Phase 10: Safety & Provenance**
+**POST** `/answer`
 
-  * Verify every record has `source_url`.
-  * Add/remove scripts (`remove_work.py`, `embed_one.py`).
-  * Ensure disclaimer appears in `/answer`.
+Generates a cited answer using GPT-4.1.
 
-* **Deployment**
+**Request Body:**
 
-  * Run API under systemd.
-  * Expose via Cloudflare Tunnel (`cloudflared tunnel ...`).
-  * Optionally route to `api.yourdomain.com`.
+```json
+{
+  "query": "Explain Huqúqu’lláh (how it works, when due, exemptions)—quote and cite.",
+  "k": 8
+}
+```
+
+**Response:**
+
+```json
+{
+  "answer": "\"Huqúqu’lláh is a great law ...\"",
+  "citations": [
+    {
+      "work_title": "Codification Law Huququllah",
+      "paragraph_id": null,
+      "source_url": "https://www.bahai.org/library/...",
+      "work_id": "codification-law-huququllah"
+    }
+  ],
+  "context_preview": [
+    "Huqúqu’lláh is a great law and a sacred institution..."
+  ],
+  "used_mode": "dense_only"
+}
+```
 
 ---
 
-## License
+## 📌 Notes for Developers
 
-All authoritative texts © Bahá’í International Community. See [https://www.bahai.org/legal](https://www.bahai.org/legal) for license terms.
+* All responses are **JSON**.
+* **/search** returns raw retrieved passages.
+* **/answer** runs retrieval → passes to GPT-4.1 → returns a **verbatim quoted answer with citations**.
+* Set headers:
 
-This project includes scripts for ingestion, retrieval, and QA. Redistribution of texts must respect the source license.
+  ```http
+  Content-Type: application/json
+  ```
+* Safe to call from browser or frontend app (CORS enabled).
+* If no results are found, `answer` will return a fallback explanation with disclaimer.
 
+---
 
+## Example cURL Calls
+
+### Health Check
+
+```bash
+curl -s http://127.0.0.1:8000/healthz
+```
+
+### Search
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/search \
+  -H "Content-Type: application/json" \
+  -d '{"query":"What is the Lesser Peace?","k":5}' | jq
+```
+
+### Answer
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/answer \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Explain the Bahá’í law of fasting.","k":5}' | jq -r '.answer'
+```
+
+---
+
+That’s it — your frontend dev just needs to POST to `/answer` with a query and show the `answer` + `citations`.
+
+```
